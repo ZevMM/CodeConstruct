@@ -3,20 +3,32 @@ import requests
 import json
 from requests.auth import HTTPBasicAuth
 from io import BytesIO
+import streamlit as st
 
+st.markdown(
+    """
+    <style>
+    .reportview-container {
+        background: url("./space.jpg")
+    }
+   .sidebar .sidebar-content {
+        background: url("./space.jpg")
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
 
 payload = {
     'username': 'alice',
     'password': 'secret'
 }
+
 resp = requests.post('https://api.spaceforce.sh/login/oauth/access-token', data= payload)
 token = json.loads(resp.text)["access_token"]
 headers = {
     'Authorization': f'Bearer {token}'
 }
-
-response = requests.get(f'https://api.spaceforce.sh/satellites/oauth/{634}/live', headers=headers)
-image_stream = BytesIO(response.content)
 
 resp = requests.get(f'https://api.spaceforce.sh/tags')
 tags = json.loads(resp.text)
@@ -33,22 +45,7 @@ categories = {
     "Owners": owners
 }
 
-results = [
-"Result 1: Information A",
-"Result 2: Information B",
-"Result 3: Information C"
-]
-#response = requests.get('https://api.spaceforce.sh/satellites/private/', auth=HTTPBasicAuth('alice', 'secret'))
-#print(json.loads(response.text)[0])
-#resp = requests.get('https://api.spaceforce.sh/satellites/public/')
-#print(resp.text)
-
-
-import streamlit as st
-
-# Function to run when any checkbox is checked
-def run_function():
-    st.success("At least one checkbox is checked!")
+  
 
 # Title of the app
 st.title("Space Force Satellite Search")
@@ -71,17 +68,60 @@ with st.sidebar:
                 if checked:
                     checked_items.append(item)
 
-    # Check if any checkbox is checked
-    if any(st.session_state.checkboxes):
-        run_function()
-
     # Radio buttons for selecting a single result
+    sel_tags = ([v for i, v in enumerate(categories["Tags"]) if st.session_state['Tags'][i]])
+    sel_cats = ([v for i, v in enumerate(categories["Categories"]) if st.session_state['Categories'][i]])
+    sel_owner = ([v for i, v in enumerate(categories["Owners"]) if st.session_state['Owners'][i]])
+
+    params = {
+        'offset': 0,
+        'limit': 10,
+        'tags': sel_tags,
+        'categories':sel_cats,
+        'owner': sel_owner
+    }
+
+    response = requests.get('https://api.spaceforce.sh/satellites/private/search', params= params, auth=HTTPBasicAuth('alice', 'secret'))
+    results = [(i["object_name"], i["norad_cat_id"]) for i in json.loads(response.text)]
     selected_result = st.radio("Select a result:", results)
 
 
-# Main area for the image
-st.header("Live Image")
-st.image(image_stream, caption="", use_column_width=True)
+curr = 634
+data = {}
 
-def run_function():
-    pass
+
+if selected_result:
+    curr = int(selected_result[1])
+
+try:
+    #response = requests.get(f'https://api.spaceforce.sh/satellites/oauth/{curr}/live', headers=headers)
+    data = json.loads(requests.get(f'https://api.spaceforce.sh/satellites/private/{curr}', auth=HTTPBasicAuth('alice', 'secret')).text)
+except Exception as e:
+    print(e)
+
+if response.status_code == 200:
+    with open("downloaded_image.png", "wb") as f:
+        f.write(response.content)
+else:
+    print("Error:", response.status_code, response.text)
+
+st.header("Live Image")
+try:
+    st.image("downloaded_image.png", caption="", use_column_width=True)
+except:
+    st.image("satellite.png", caption="", use_column_width=True)
+
+
+
+
+
+
+st.write("")  # Add some space
+
+# Bottom bar section
+st.subheader(data["object_name"])
+st.markdown("---")
+for key, value in data.items():
+    st.write(f"**{key}**: {value}")
+
+
